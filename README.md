@@ -74,6 +74,16 @@ Los umbrales están en la función `verdict()` y se pueden cambiar. Ojo: que sal
 
 OTX no cuenta para el veredicto. Dominios inofensivos como `example.com` aparecen en decenas de pulses porque la gente los mete en sus listas, así que el número de pulses se muestra como contexto para que lo valores tú.
 
+## Caché local
+
+Para no repetir consultas (y no gastar cuota), las respuestas se cachean en `~/.ioc_enricher_cache.json`. Una respuesta vale 24 horas por defecto; pasado ese tiempo se vuelve a consultar.
+
+```bash
+python ioc_enricher.py 8.8.8.8 --cache-ttl 6     # las respuestas valen 6 h
+python ioc_enricher.py 8.8.8.8 --cache-file ./iocs.cache.json
+python ioc_enricher.py 8.8.8.8 --no-cache        # ignora la caché
+```
+
 ## Límites
 
 - Con la API gratuita de VirusTotal solo puedes hacer 4 consultas por minuto y 500 al día. Si te pasas, el script espera 60 segundos y lo intenta una vez más.
@@ -93,7 +103,7 @@ No usan la red ni necesitan API keys.
 - [x] Añadir AlienVault OTX
 - [ ] Añadir URLhaus y Shodan
 - [x] Exportar a CSV
-- [ ] Guardar una caché local para no repetir consultas
+- [x] Guardar una caché local para no repetir consultas
 
 ## Licencia
 

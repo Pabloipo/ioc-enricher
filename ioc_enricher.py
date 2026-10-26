@@ -46,7 +46,12 @@ def ioc_type(ioc):
     return None
 
 
-def http_get(url, headers):
+# ponytail: caché global en memoria, único proceso CLI; sqlite si hiciera falta concurrencia
+_CACHE = None          # dict {url: [epoch, respuesta]} cuando está activa, None si no
+_CACHE_TTL = 24 * 3600  # segundos; respuestas más viejas se reconsultan
+
+
+def _http_get_live(url, headers):
     req = urllib.request.Request(url, headers=headers)
     for attempt in range(2):
         try:
@@ -61,6 +66,18 @@ def http_get(url, headers):
                 time.sleep(60)
                 continue
             raise
+
+
+def http_get(url, headers):
+    now = time.time()
+    if _CACHE is not None:
+        hit = _CACHE.get(url)
+        if hit and now - hit[0] < _CACHE_TTL:
+            return hit[1]
+    result = _http_get_live(url, headers)
+    if _CACHE is not None:
+        _CACHE[url] = [now, result]
+    return result
 
 
 VT_API_PATH = {"ip": "ip_addresses", "domain": "domains", "hash": "files"}
@@ -208,6 +225,25 @@ def print_csv(results):
         w.writerow(csv_row(r))
 
 
+DEFAULT_CACHE = os.path.join(os.path.expanduser("~"), ".ioc_enricher_cache.json")
+
+
+def load_cache(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return json.load(fh)
+    except (OSError, ValueError):
+        return {}
+
+
+def save_cache(path, cache):
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            json.dump(cache, fh)
+    except OSError as e:
+        print(f"  no se pudo guardar la caché: {e}", file=sys.stderr)
+
+
 def main():
     p = argparse.ArgumentParser(description="Enriquece IOCs con VirusTotal y AbuseIPDB.")
     p.add_argument("iocs", nargs="*", help="IPs, dominios o hashes (MD5/SHA1/SHA256)")
@@ -215,6 +251,11 @@ def main():
     out = p.add_mutually_exclusive_group()
     out.add_argument("--json", action="store_true", help="salida en JSON")
     out.add_argument("--csv", action="store_true", help="salida en CSV")
+    p.add_argument("--no-cache", action="store_true",
+                   help="no usar la caché local (por defecto se cachea en ~/.ioc_enricher_cache.json)")
+    p.add_argument("--cache-file", default=DEFAULT_CACHE, help="ruta del fichero de caché")
+    p.add_argument("--cache-ttl", type=float, default=24,
+                   help="horas que vale una respuesta cacheada (por defecto 24)")
     args = p.parse_args()
 
     iocs = list(args.iocs)
@@ -230,7 +271,16 @@ def main():
     abuse_key = os.environ.get("ABUSEIPDB_API_KEY")
     otx_key = os.environ.get("OTX_API_KEY")
 
+    if not args.no_cache:
+        global _CACHE, _CACHE_TTL
+        _CACHE_TTL = args.cache_ttl * 3600
+        _CACHE = load_cache(args.cache_file)
+
     results = [enrich(i, vt_key, abuse_key, otx_key) for i in dict.fromkeys(iocs)]
+
+    if _CACHE is not None:
+        save_cache(args.cache_file, _CACHE)
+
     if args.json:
         print(json.dumps(results, indent=2, ensure_ascii=False))
     elif args.csv:

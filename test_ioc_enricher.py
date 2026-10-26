@@ -1,6 +1,10 @@
 """Tests sin red: python test_ioc_enricher.py"""
+import time
+
 import ioc_enricher
 from ioc_enricher import csv_row, ioc_type, otx, refang, verdict
+
+real_http_get = ioc_enricher.http_get  # otx() de abajo sustituye http_get; guardamos el real
 
 assert refang("evil[.]com") == "evil.com"
 assert refang("hxxps://evil[.]com/payload.exe") == "evil.com"
@@ -38,5 +42,16 @@ row = csv_row({"ioc": "8.8.8.8", "type": "ip", "verdict": "LIMPIO",
 assert row["vt_engines"] == 70 and row["abuse_score"] == 0 and row["link"] == "x"
 assert row["otx_pulses"] is None
 assert csv_row({"ioc": "bad", "type": None, "verdict": "NO VÁLIDO"})["vt_malicious"] is None
+
+# caché: sirve lo fresco sin tocar la red; reconsulta lo caducado y lo refresca
+ioc_enricher._http_get_live = lambda url, headers: "LIVE"
+ioc_enricher._CACHE_TTL = 3600
+ioc_enricher._CACHE = {"u": [time.time(), "FRESCO"]}
+assert real_http_get("u", {}) == "FRESCO"      # hit, no llama a _http_get_live
+ioc_enricher._CACHE = {"u": [0, "VIEJO"]}       # caducado (epoch 0)
+assert real_http_get("u", {}) == "LIVE"         # miss por TTL
+assert ioc_enricher._CACHE["u"][1] == "LIVE"    # y se guarda lo nuevo
+assert real_http_get("v", {}) == "LIVE" and "v" in ioc_enricher._CACHE
+ioc_enricher._CACHE = None                              # vuelve al estado por defecto
 
 print("OK")
