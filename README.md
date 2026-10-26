@@ -6,7 +6,7 @@ Funciona con Python 3.8 o superior y no necesita instalar ninguna librería.
 
 ## Qué hace
 
-- Reconoce si el IOC es una IPv4/IPv6, un dominio o un hash (MD5, SHA1 o SHA256).
+- Reconoce si el IOC es una IPv4/IPv6, un dominio, una URL o un hash (MD5, SHA1 o SHA256).
 - Acepta IOCs "defangeados" como vienen en los informes (`evil[.]com`, `hxxps://`, `1.2.3[.]4`).
 - Las IPs privadas las salta para no gastar consultas.
 - Consulta VirusTotal para todo y, si es una IP, también AbuseIPDB.
@@ -87,7 +87,7 @@ python ioc_enricher.py 8.8.8.8 --no-cache        # ignora la caché
 ## Límites
 
 - Con la API gratuita de VirusTotal solo puedes hacer 4 consultas por minuto y 500 al día. Si te pasas, el script espera 60 segundos y lo intenta una vez más.
-- Las URLs no se analizan enteras, solo su dominio.
+- Las URLs se consultan enteras, pero solo si VirusTotal ya las conoce: el script no las envía a analizar (saldría `SIN DATOS`).
 
 ## Tests
 
@@ -99,7 +99,7 @@ No usan la red ni necesitan API keys.
 
 ## Pendiente
 
-- [ ] Analizar URLs completas
+- [x] Analizar URLs completas
 - [x] Añadir AlienVault OTX
 - [ ] Añadir URLhaus y Shodan
 - [x] Exportar a CSV

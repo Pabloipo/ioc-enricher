@@ -9,6 +9,7 @@ Claves por variable de entorno: VT_API_KEY (obligatoria), ABUSEIPDB_API_KEY y OT
 Solo usa la librería estándar de Python.
 """
 import argparse
+import base64
 import csv
 import ipaddress
 import json
@@ -25,15 +26,24 @@ DOMAIN_RE = re.compile(r"^(?=.{1,253}$)([a-zA-Z0-9-]{1,63}\.)+[a-zA-Z]{2,63}$")
 
 
 def refang(ioc):
-    """Quita el 'defang' típico de los informes: evil[.]com, hxxp://, 1.2.3[.]4."""
+    """Quita el 'defang' de los informes conservando la URL entera: evil[.]com,
+    hxxp://, 1.2.3[.]4, hxxps://evil[.]com/payload.exe."""
     ioc = ioc.strip().replace("[.]", ".").replace("(.)", ".").replace("[:]", ":")
-    ioc = re.sub(r"^hxxps?://", "", ioc, flags=re.I)
-    ioc = re.sub(r"^https?://", "", ioc, flags=re.I)
-    return ioc.split("/")[0] if "." in ioc and not HASH_RE.match(ioc) else ioc
+    return re.sub(r"^hxxp", "http", ioc, flags=re.I)
+
+
+def _is_ip(s):
+    try:
+        ipaddress.ip_address(s)
+        return True
+    except ValueError:
+        return False
 
 
 def ioc_type(ioc):
-    """Devuelve 'ip', 'private_ip', 'hash', 'domain' o None."""
+    """Devuelve 'ip', 'private_ip', 'hash', 'domain', 'url' o None."""
+    if re.match(r"^https?://", ioc, re.I):
+        return "url"
     try:
         ip = ipaddress.ip_address(ioc)
         return "ip" if ip.is_global else "private_ip"
@@ -43,6 +53,10 @@ def ioc_type(ioc):
         return "hash"
     if DOMAIN_RE.match(ioc):
         return "domain"
+    # host/ruta sin esquema (evil.com/x, 1.2.3.4/x) también es una URL
+    host = ioc.split("/", 1)[0].split("?", 1)[0]
+    if "/" in ioc and (DOMAIN_RE.match(host) or _is_ip(host)):
+        return "url"
     return None
 
 
@@ -80,12 +94,18 @@ def http_get(url, headers):
     return result
 
 
-VT_API_PATH = {"ip": "ip_addresses", "domain": "domains", "hash": "files"}
-VT_GUI_PATH = {"ip": "ip-address", "domain": "domain", "hash": "file"}
+VT_API_PATH = {"ip": "ip_addresses", "domain": "domains", "hash": "files", "url": "urls"}
+VT_GUI_PATH = {"ip": "ip-address", "domain": "domain", "hash": "file", "url": "url"}
+
+
+def vt_url_id(url):
+    """Identificador de URL en VT v3: base64url sin relleno (no se sube la URL)."""
+    return base64.urlsafe_b64encode(url.encode()).rstrip(b"=").decode()
 
 
 def virustotal(ioc, kind, key):
-    data = http_get(f"https://www.virustotal.com/api/v3/{VT_API_PATH[kind]}/{ioc}",
+    ident = vt_url_id(ioc) if kind == "url" else ioc
+    data = http_get(f"https://www.virustotal.com/api/v3/{VT_API_PATH[kind]}/{ident}",
                     {"x-apikey": key})
     if data is None:
         return {"found": False}
@@ -97,12 +117,14 @@ def virustotal(ioc, kind, key):
         "suspicious": stats.get("suspicious", 0),
         "engines": sum(stats.values()),
         "reputation": a.get("reputation"),
-        "link": f"https://www.virustotal.com/gui/{VT_GUI_PATH[kind]}/{ioc}",
+        "link": f"https://www.virustotal.com/gui/{VT_GUI_PATH[kind]}/{ident}",
     }
     if kind == "ip":
         out.update(country=a.get("country"), as_owner=a.get("as_owner"))
     elif kind == "domain":
         out.update(registrar=a.get("registrar"))
+    elif kind == "url":
+        out.update(title=a.get("title"))
     else:
         out.update(name=a.get("meaningful_name"), type=a.get("type_description"))
     return out
@@ -125,8 +147,9 @@ def otx(ioc, kind, key):
     if kind == "ip":
         slug = "IPv6" if ":" in ioc else "IPv4"
     else:
-        slug = {"domain": "domain", "hash": "file"}[kind]
-    d = http_get(f"https://otx.alienvault.com/api/v1/indicators/{slug}/{ioc}/general",
+        slug = {"domain": "domain", "hash": "file", "url": "url"}[kind]
+    ident = urllib.parse.quote(ioc, safe="") if kind == "url" else ioc
+    d = http_get(f"https://otx.alienvault.com/api/v1/indicators/{slug}/{ident}/general",
                  {"X-OTX-API-KEY": key})
     pulses = (d or {}).get("pulse_info", {})
     return {
@@ -177,7 +200,7 @@ def print_result(r):
         print(f"  VirusTotal: {vt['malicious']}/{vt['engines']} maliciosos, "
               f"{vt['suspicious']} sospechosos, reputación {vt['reputation']}")
         extra = {k: v for k, v in vt.items()
-                 if k in ("country", "as_owner", "registrar", "name", "type") and v}
+                 if k in ("country", "as_owner", "registrar", "name", "type", "title") and v}
         if extra:
             print("  " + ", ".join(f"{k}: {v}" for k, v in extra.items()))
         print(f"  {vt['link']}")

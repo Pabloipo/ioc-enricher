@@ -2,12 +2,12 @@
 import time
 
 import ioc_enricher
-from ioc_enricher import csv_row, ioc_type, otx, refang, verdict
+from ioc_enricher import csv_row, ioc_type, otx, refang, verdict, vt_url_id
 
 real_http_get = ioc_enricher.http_get  # otx() de abajo sustituye http_get; guardamos el real
 
 assert refang("evil[.]com") == "evil.com"
-assert refang("hxxps://evil[.]com/payload.exe") == "evil.com"
+assert refang("hxxps://evil[.]com/payload.exe") == "https://evil.com/payload.exe"
 assert refang("185.220.101[.]1") == "185.220.101.1"
 
 assert ioc_type("8.8.8.8") == "ip"
@@ -17,6 +17,14 @@ assert ioc_type("example.com") == "domain"
 assert ioc_type("44d88612fea8a8f36de82e1278abb02f") == "hash"  # MD5 de EICAR
 assert ioc_type("a" * 64) == "hash"
 assert ioc_type("no es un ioc") is None
+
+# URLs: con esquema, o host/ruta sin esquema; el dominio pelado sigue siendo 'domain'
+assert ioc_type("https://evil.com/payload.exe") == "url"
+assert ioc_type("evil.com/wp-login.php") == "url"
+assert ioc_type("185.220.101.1/x") == "url"
+assert ioc_type("example.com") == "domain"
+# id de VT = base64url sin relleno; EICAR URL de ejemplo
+assert vt_url_id("http://a.com") == "aHR0cDovL2EuY29t"
 
 assert verdict({"virustotal": {"found": True, "malicious": 5}}) == "MALICIOSO"
 assert verdict({"virustotal": {"found": True, "malicious": 0}, "abuseipdb": {"score": 90}}) == "MALICIOSO"
