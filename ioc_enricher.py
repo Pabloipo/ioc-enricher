@@ -9,6 +9,7 @@ Claves por variable de entorno: VT_API_KEY (obligatoria), ABUSEIPDB_API_KEY y OT
 Solo usa la librería estándar de Python.
 """
 import argparse
+import csv
 import ipaddress
 import json
 import os
@@ -175,11 +176,45 @@ def print_result(r):
         print(f"  AlienVault OTX: aparece en {ox['pulses']} pulses{names}")
 
 
+CSV_COLUMNS = ["ioc", "type", "verdict", "vt_malicious", "vt_suspicious",
+               "vt_engines", "vt_reputation", "abuse_score", "abuse_reports",
+               "otx_pulses", "link", "error"]
+
+
+def csv_row(r):
+    vt = r.get("virustotal") or {}
+    ab = r.get("abuseipdb") or {}
+    ox = r.get("otx") or {}
+    return {
+        "ioc": r.get("ioc"),
+        "type": r.get("type"),
+        "verdict": r.get("verdict"),
+        "vt_malicious": vt.get("malicious"),
+        "vt_suspicious": vt.get("suspicious"),
+        "vt_engines": vt.get("engines"),
+        "vt_reputation": vt.get("reputation"),
+        "abuse_score": ab.get("score"),
+        "abuse_reports": ab.get("reports"),
+        "otx_pulses": ox.get("pulses"),
+        "link": vt.get("link"),
+        "error": r.get("error"),
+    }
+
+
+def print_csv(results):
+    w = csv.DictWriter(sys.stdout, fieldnames=CSV_COLUMNS)
+    w.writeheader()
+    for r in results:
+        w.writerow(csv_row(r))
+
+
 def main():
     p = argparse.ArgumentParser(description="Enriquece IOCs con VirusTotal y AbuseIPDB.")
     p.add_argument("iocs", nargs="*", help="IPs, dominios o hashes (MD5/SHA1/SHA256)")
     p.add_argument("-f", "--file", help="fichero con un IOC por línea (# para comentarios)")
-    p.add_argument("--json", action="store_true", help="salida en JSON")
+    out = p.add_mutually_exclusive_group()
+    out.add_argument("--json", action="store_true", help="salida en JSON")
+    out.add_argument("--csv", action="store_true", help="salida en CSV")
     args = p.parse_args()
 
     iocs = list(args.iocs)
@@ -198,6 +233,8 @@ def main():
     results = [enrich(i, vt_key, abuse_key, otx_key) for i in dict.fromkeys(iocs)]
     if args.json:
         print(json.dumps(results, indent=2, ensure_ascii=False))
+    elif args.csv:
+        print_csv(results)
     else:
         for r in results:
             print_result(r)

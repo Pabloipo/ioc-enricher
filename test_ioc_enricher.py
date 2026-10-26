@@ -1,6 +1,6 @@
 """Tests sin red: python test_ioc_enricher.py"""
 import ioc_enricher
-from ioc_enricher import ioc_type, otx, refang, verdict
+from ioc_enricher import csv_row, ioc_type, otx, refang, verdict
 
 assert refang("evil[.]com") == "evil.com"
 assert refang("hxxps://evil[.]com/payload.exe") == "evil.com"
@@ -30,5 +30,13 @@ otx("a" * 64, "hash", "k")
 assert "/indicators/file/" in calls[-1]
 ioc_enricher.http_get = lambda url, headers: None  # 404
 assert otx("evil.com", "domain", "k") == {"pulses": 0, "names": []}
+
+# csv_row aplana el resultado y deja en blanco lo que no aplica a ese tipo
+row = csv_row({"ioc": "8.8.8.8", "type": "ip", "verdict": "LIMPIO",
+               "virustotal": {"malicious": 0, "engines": 70, "link": "x"},
+               "abuseipdb": {"score": 0}})
+assert row["vt_engines"] == 70 and row["abuse_score"] == 0 and row["link"] == "x"
+assert row["otx_pulses"] is None
+assert csv_row({"ioc": "bad", "type": None, "verdict": "NO VÁLIDO"})["vt_malicious"] is None
 
 print("OK")

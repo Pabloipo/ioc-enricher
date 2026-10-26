@@ -12,7 +12,7 @@ Funciona con Python 3.8 o superior y no necesita instalar ninguna librería.
 - Consulta VirusTotal para todo y, si es una IP, también AbuseIPDB.
 - Si tienes clave de OTX, dice en cuántos pulses aparece el IOC y el nombre de algunos.
 - Devuelve `MALICIOSO`, `SOSPECHOSO`, `LIMPIO` o `SIN DATOS`.
-- Con `--json` saca el resultado en JSON para pasarlo a otra herramienta.
+- Con `--json` saca el resultado en JSON, o con `--csv` en CSV, para pasarlo a otra herramienta.
 
 ## Instalación
 
@@ -49,6 +49,7 @@ $env:OTX_API_KEY = "tu_clave"
 python ioc_enricher.py 185.220.101[.]1 example.com 44d88612fea8a8f36de82e1278abb02f
 python ioc_enricher.py -f iocs.txt
 python ioc_enricher.py -f iocs.txt --json > resultado.json
+python ioc_enricher.py -f iocs.txt --csv > resultado.csv
 ```
 
 Ejemplo de salida (las cifras son inventadas):
@@ -91,7 +92,7 @@ No usan la red ni necesitan API keys.
 - [ ] Analizar URLs completas
 - [x] Añadir AlienVault OTX
 - [ ] Añadir URLhaus y Shodan
-- [ ] Exportar a CSV
+- [x] Exportar a CSV
 - [ ] Guardar una caché local para no repetir consultas
 
 ## Licencia
