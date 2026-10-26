@@ -1,0 +1,34 @@
+"""Tests sin red: python test_ioc_enricher.py"""
+import ioc_enricher
+from ioc_enricher import ioc_type, otx, refang, verdict
+
+assert refang("evil[.]com") == "evil.com"
+assert refang("hxxps://evil[.]com/payload.exe") == "evil.com"
+assert refang("185.220.101[.]1") == "185.220.101.1"
+
+assert ioc_type("8.8.8.8") == "ip"
+assert ioc_type("192.168.1.10") == "private_ip"
+assert ioc_type("2001:4860:4860::8888") == "ip"
+assert ioc_type("example.com") == "domain"
+assert ioc_type("44d88612fea8a8f36de82e1278abb02f") == "hash"  # MD5 de EICAR
+assert ioc_type("a" * 64) == "hash"
+assert ioc_type("no es un ioc") is None
+
+assert verdict({"virustotal": {"found": True, "malicious": 5}}) == "MALICIOSO"
+assert verdict({"virustotal": {"found": True, "malicious": 0}, "abuseipdb": {"score": 90}}) == "MALICIOSO"
+assert verdict({"virustotal": {"found": True, "suspicious": 1}}) == "SOSPECHOSO"
+assert verdict({"virustotal": {"found": False}}) == "SIN DATOS"
+assert verdict({"virustotal": {"found": True, "malicious": 0}}) == "LIMPIO"
+
+# OTX con una respuesta simulada: comprueba la URL y cómo se leen los pulses
+calls = []
+ioc_enricher.http_get = lambda url, headers: calls.append(url) or {
+    "pulse_info": {"count": 5, "pulses": [{"name": f"p{i}"} for i in range(5)]}}
+assert otx("2001:db8::1", "ip", "k") == {"pulses": 5, "names": ["p0", "p1", "p2"]}
+assert calls[-1].endswith("/indicators/IPv6/2001:db8::1/general")
+otx("a" * 64, "hash", "k")
+assert "/indicators/file/" in calls[-1]
+ioc_enricher.http_get = lambda url, headers: None  # 404
+assert otx("evil.com", "domain", "k") == {"pulses": 0, "names": []}
+
+print("OK")
