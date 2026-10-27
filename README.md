@@ -11,6 +11,7 @@ Funciona con Python 3.8 o superior y no necesita instalar ninguna librería.
 - Las IPs privadas las salta para no gastar consultas.
 - Consulta VirusTotal para todo y, si es una IP, también AbuseIPDB y Shodan (InternetDB: puertos abiertos, CVEs y tags).
 - Si tienes clave de OTX, dice en cuántos pulses aparece el IOC y el nombre de algunos.
+- Si tienes clave de URLhaus (abuse.ch), comprueba si el IOC está en su feed de URLs de malware.
 - Devuelve `MALICIOSO`, `SOSPECHOSO`, `LIMPIO` o `SIN DATOS`.
 - Con `--json` saca el resultado en JSON, o con `--csv` en CSV, para pasarlo a otra herramienta.
 
@@ -21,19 +22,21 @@ git clone https://github.com/Pabloipo/ioc-enricher.git
 cd ioc-enricher
 ```
 
-Hace falta una API key gratuita de VirusTotal. Las de AbuseIPDB y OTX son opcionales.
+Hace falta una API key gratuita de VirusTotal. Las de AbuseIPDB, OTX y URLhaus son opcionales (Shodan InternetDB no necesita clave).
 
 | Servicio | Dónde sacar la clave |
 |---|---|
 | VirusTotal | Crea una cuenta en virustotal.com, menú de tu usuario > API key |
 | AbuseIPDB | Crea una cuenta en abuseipdb.com, Account > API > Create Key |
 | AlienVault OTX | Crea una cuenta en otx.alienvault.com, tu usuario > Settings > OTX Key |
+| URLhaus | Crea una cuenta en auth.abuse.ch, perfil > Auth-Key |
 
 ```bash
 # Linux / macOS
 export VT_API_KEY="tu_clave"
 export ABUSEIPDB_API_KEY="tu_clave"
 export OTX_API_KEY="tu_clave"
+export URLHAUS_API_KEY="tu_clave"
 ```
 
 ```powershell
@@ -41,6 +44,7 @@ export OTX_API_KEY="tu_clave"
 $env:VT_API_KEY = "tu_clave"
 $env:ABUSEIPDB_API_KEY = "tu_clave"
 $env:OTX_API_KEY = "tu_clave"
+$env:URLHAUS_API_KEY = "tu_clave"
 ```
 
 ## Uso
@@ -65,8 +69,8 @@ Ejemplo de salida (las cifras son inventadas):
 
 | Veredicto | Condición |
 |---|---|
-| MALICIOSO | 3 o más motores de VT lo marcan como malicioso, o AbuseIPDB ≥ 75 % |
-| SOSPECHOSO | Algún motor lo marca como malicioso o sospechoso, o AbuseIPDB ≥ 25 % |
+| MALICIOSO | 3 o más motores de VT lo marcan como malicioso, o AbuseIPDB ≥ 75 %, o una URL/hash está en URLhaus |
+| SOSPECHOSO | Algún motor lo marca como malicioso o sospechoso, o AbuseIPDB ≥ 25 %, o una IP/dominio está en URLhaus |
 | SIN DATOS | VirusTotal no lo conoce |
 | LIMPIO | Ninguno de los anteriores |
 
@@ -104,7 +108,7 @@ No usan la red ni necesitan API keys.
 - [x] Analizar URLs completas
 - [x] Añadir AlienVault OTX
 - [x] Añadir Shodan (InternetDB, sin key)
-- [ ] Añadir URLhaus
+- [x] Añadir URLhaus
 - [ ] Soportar la API completa de Shodan con key (SHODAN_API_KEY)
 - [x] Exportar a CSV
 - [x] Guardar una caché local para no repetir consultas

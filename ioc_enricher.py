@@ -65,8 +65,10 @@ _CACHE = None          # dict {url: [epoch, respuesta]} cuando está activa, Non
 _CACHE_TTL = 24 * 3600  # segundos; respuestas más viejas se reconsultan
 
 
-def _http_get_live(url, headers):
-    req = urllib.request.Request(url, headers=headers)
+def _http_get_live(url, headers, data=None):
+    body = urllib.parse.urlencode(data).encode() if isinstance(data, dict) else (
+        data.encode() if isinstance(data, str) else None)
+    req = urllib.request.Request(url, data=body, headers=headers)  # data -> POST
     for attempt in range(2):
         try:
             with urllib.request.urlopen(req, timeout=20) as r:
@@ -82,15 +84,16 @@ def _http_get_live(url, headers):
             raise
 
 
-def http_get(url, headers):
+def http_get(url, headers, data=None):
     now = time.time()
+    key = url if data is None else f"{url}|{data}"  # POST: el cuerpo distingue la consulta
     if _CACHE is not None:
-        hit = _CACHE.get(url)
+        hit = _CACHE.get(key)
         if hit and now - hit[0] < _CACHE_TTL:
             return hit[1]
-    result = _http_get_live(url, headers)
+    result = _http_get_live(url, headers, data)
     if _CACHE is not None:
-        _CACHE[url] = [now, result]
+        _CACHE[key] = [now, result]
     return result
 
 
@@ -156,6 +159,29 @@ def shodan(ip):
     }
 
 
+def urlhaus(ioc, kind, key):
+    """URLhaus (abuse.ch): ¿el IOC está en su feed de URLs de malware? Requiere Auth-Key."""
+    if kind == "hash" and len(ioc) == 40:
+        return None  # URLhaus indexa payloads por MD5/SHA256, no por SHA1
+    if kind == "hash":
+        ep = "payload"
+        data = {"sha256_hash" if len(ioc) == 64 else "md5_hash": ioc}
+    elif kind == "url":
+        ep, data = "url", {"url": ioc}
+    else:  # ip o domain
+        ep, data = "host", {"host": ioc}
+    d = http_get(f"https://urlhaus-api.abuse.ch/v1/{ep}/", {"Auth-Key": key}, data)
+    if not d or d.get("query_status") != "ok":
+        return {"listed": False}
+    urls = d.get("urls") or []
+    return {
+        "listed": True,
+        "url_count": d.get("url_count") or len(urls) or 1,
+        "threat": d.get("threat") or d.get("signature") or (urls[0].get("threat") if urls else None),
+        "reference": d.get("urlhaus_reference") or (urls[0].get("urlhaus_reference") if urls else None),
+    }
+
+
 def otx(ioc, kind, key):
     if kind == "ip":
         slug = "IPv6" if ":" in ioc else "IPv4"
@@ -175,17 +201,20 @@ def verdict(result):
     """Veredicto simple. Ajusta los umbrales a tu SOC."""
     vt = result.get("virustotal") or {}
     abuse = (result.get("abuseipdb") or {}).get("score") or 0
+    uh_listed = (result.get("urlhaus") or {}).get("listed")
     mal, sus = vt.get("malicious", 0), vt.get("suspicious", 0)
-    if mal >= 3 or abuse >= 75:
+    # URLhaus es un feed curado: una URL o hash en la lista es malware casi seguro;
+    # una IP/dominio solo ha alojado malware (hosting compartido), así que es sospechoso.
+    if mal >= 3 or abuse >= 75 or (uh_listed and result.get("type") in ("url", "hash")):
         return "MALICIOSO"
-    if mal or sus or abuse >= 25:
+    if mal or sus or abuse >= 25 or uh_listed:
         return "SOSPECHOSO"
     if not vt.get("found", True):
         return "SIN DATOS"
     return "LIMPIO"
 
 
-def enrich(raw, vt_key, abuse_key, otx_key=None):
+def enrich(raw, vt_key, abuse_key, otx_key=None, urlhaus_key=None):
     ioc = refang(raw)
     kind = ioc_type(ioc)
     result = {"ioc": ioc, "type": kind}
@@ -200,6 +229,10 @@ def enrich(raw, vt_key, abuse_key, otx_key=None):
             sh = shodan(ioc)  # InternetDB no necesita clave
             if sh:
                 result["shodan"] = sh
+        if urlhaus_key:
+            uh = urlhaus(ioc, kind, urlhaus_key)
+            if uh is not None:
+                result["urlhaus"] = uh
         if otx_key:
             result["otx"] = otx(ioc, kind, otx_key)
     except (urllib.error.URLError, KeyError) as e:
@@ -236,6 +269,13 @@ def print_result(r):
         if sh["tags"]:
             line += f"; tags: {', '.join(sh['tags'])}"
         print(line)
+    uh = r.get("urlhaus")
+    if uh and uh.get("listed"):
+        threat = f", amenaza: {uh['threat']}" if uh.get("threat") else ""
+        ref = f" {uh['reference']}" if uh.get("reference") else ""
+        print(f"  URLhaus: en la lista ({uh['url_count']} URLs){threat}{ref}")
+    elif uh:
+        print("  URLhaus: no aparece")
     ox = r.get("otx")
     if ox:
         names = f" (p. ej. {'; '.join(ox['names'])})" if ox["names"] else ""
@@ -244,13 +284,15 @@ def print_result(r):
 
 CSV_COLUMNS = ["ioc", "type", "verdict", "vt_malicious", "vt_suspicious",
                "vt_engines", "vt_reputation", "abuse_score", "abuse_reports",
-               "shodan_ports", "shodan_vulns", "otx_pulses", "link", "error"]
+               "shodan_ports", "shodan_vulns", "urlhaus_listed", "otx_pulses",
+               "link", "error"]
 
 
 def csv_row(r):
     vt = r.get("virustotal") or {}
     ab = r.get("abuseipdb") or {}
     sh = r.get("shodan") or {}
+    uh = r.get("urlhaus") or {}
     ox = r.get("otx") or {}
     return {
         "ioc": r.get("ioc"),
@@ -264,6 +306,7 @@ def csv_row(r):
         "abuse_reports": ab.get("reports"),
         "shodan_ports": len(sh["ports"]) if sh else None,
         "shodan_vulns": len(sh["vulns"]) if sh else None,
+        "urlhaus_listed": uh.get("listed"),
         "otx_pulses": ox.get("pulses"),
         "link": vt.get("link"),
         "error": r.get("error"),
@@ -322,13 +365,14 @@ def main():
         sys.exit("Falta la variable de entorno VT_API_KEY")
     abuse_key = os.environ.get("ABUSEIPDB_API_KEY")
     otx_key = os.environ.get("OTX_API_KEY")
+    urlhaus_key = os.environ.get("URLHAUS_API_KEY")
 
     if not args.no_cache:
         global _CACHE, _CACHE_TTL
         _CACHE_TTL = args.cache_ttl * 3600
         _CACHE = load_cache(args.cache_file)
 
-    results = [enrich(i, vt_key, abuse_key, otx_key) for i in dict.fromkeys(iocs)]
+    results = [enrich(i, vt_key, abuse_key, otx_key, urlhaus_key) for i in dict.fromkeys(iocs)]
 
     if _CACHE is not None:
         save_cache(args.cache_file, _CACHE)

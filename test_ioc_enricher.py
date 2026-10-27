@@ -2,7 +2,7 @@
 import time
 
 import ioc_enricher
-from ioc_enricher import csv_row, ioc_type, otx, refang, shodan, verdict, vt_url_id
+from ioc_enricher import csv_row, ioc_type, otx, refang, shodan, urlhaus, verdict, vt_url_id
 
 real_http_get = ioc_enricher.http_get  # otx() de abajo sustituye http_get; guardamos el real
 
@@ -31,6 +31,13 @@ assert verdict({"virustotal": {"found": True, "malicious": 0}, "abuseipdb": {"sc
 assert verdict({"virustotal": {"found": True, "suspicious": 1}}) == "SOSPECHOSO"
 assert verdict({"virustotal": {"found": False}}) == "SIN DATOS"
 assert verdict({"virustotal": {"found": True, "malicious": 0}}) == "LIMPIO"
+# URLhaus en la lista: una URL/hash es MALICIOSO; una IP/dominio solo SOSPECHOSO
+assert verdict({"type": "url", "virustotal": {"found": True, "malicious": 0},
+                "urlhaus": {"listed": True}}) == "MALICIOSO"
+assert verdict({"type": "domain", "virustotal": {"found": True, "malicious": 0},
+                "urlhaus": {"listed": True}}) == "SOSPECHOSO"
+assert verdict({"type": "domain", "virustotal": {"found": True, "malicious": 0},
+                "urlhaus": {"listed": False}}) == "LIMPIO"
 
 # Shodan InternetDB simulado: parsea campos y devuelve None en 404
 ioc_enricher.http_get = lambda url, headers: {
@@ -44,6 +51,21 @@ srow = csv_row({"ioc": "1.2.3.4", "type": "ip", "verdict": "LIMPIO",
                 "shodan": {"ports": [22, 443], "vulns": ["CVE-2021-1"]}})
 assert srow["shodan_ports"] == 2 and srow["shodan_vulns"] == 1
 assert csv_row({"ioc": "x", "type": "ip", "verdict": "LIMPIO"})["shodan_ports"] is None
+
+# URLhaus simulado: ok -> listed, elige endpoint/campo según el tipo; no_results/SHA1
+uh_calls = []
+ioc_enricher.http_get = lambda url, headers, data=None: uh_calls.append((url, data)) or {
+    "query_status": "ok", "url_count": 4, "threat": "malware_download",
+    "urlhaus_reference": "https://urlhaus.abuse.ch/host/evil.com/"}
+assert urlhaus("evil.com", "domain", "k") == {
+    "listed": True, "url_count": 4, "threat": "malware_download",
+    "reference": "https://urlhaus.abuse.ch/host/evil.com/"}
+assert uh_calls[-1] == ("https://urlhaus-api.abuse.ch/v1/host/", {"host": "evil.com"})
+urlhaus("a" * 64, "hash", "k")
+assert uh_calls[-1] == ("https://urlhaus-api.abuse.ch/v1/payload/", {"sha256_hash": "a" * 64})
+assert urlhaus("a" * 40, "hash", "k") is None  # SHA1 no lo indexa URLhaus
+ioc_enricher.http_get = lambda url, headers, data=None: {"query_status": "no_results"}
+assert urlhaus("clean.com", "domain", "k") == {"listed": False}
 
 # OTX con una respuesta simulada: comprueba la URL y cómo se leen los pulses
 calls = []
@@ -65,7 +87,7 @@ assert row["otx_pulses"] is None
 assert csv_row({"ioc": "bad", "type": None, "verdict": "NO VÁLIDO"})["vt_malicious"] is None
 
 # caché: sirve lo fresco sin tocar la red; reconsulta lo caducado y lo refresca
-ioc_enricher._http_get_live = lambda url, headers: "LIVE"
+ioc_enricher._http_get_live = lambda url, headers, data=None: "LIVE"
 ioc_enricher._CACHE_TTL = 3600
 ioc_enricher._CACHE = {"u": [time.time(), "FRESCO"]}
 assert real_http_get("u", {}) == "FRESCO"      # hit, no llama a _http_get_live
