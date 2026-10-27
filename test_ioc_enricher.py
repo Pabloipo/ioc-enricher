@@ -2,7 +2,7 @@
 import time
 
 import ioc_enricher
-from ioc_enricher import csv_row, ioc_type, otx, refang, verdict, vt_url_id
+from ioc_enricher import csv_row, ioc_type, otx, refang, shodan, verdict, vt_url_id
 
 real_http_get = ioc_enricher.http_get  # otx() de abajo sustituye http_get; guardamos el real
 
@@ -31,6 +31,19 @@ assert verdict({"virustotal": {"found": True, "malicious": 0}, "abuseipdb": {"sc
 assert verdict({"virustotal": {"found": True, "suspicious": 1}}) == "SOSPECHOSO"
 assert verdict({"virustotal": {"found": False}}) == "SIN DATOS"
 assert verdict({"virustotal": {"found": True, "malicious": 0}}) == "LIMPIO"
+
+# Shodan InternetDB simulado: parsea campos y devuelve None en 404
+ioc_enricher.http_get = lambda url, headers: {
+    "ports": [22, 443], "vulns": ["CVE-2021-1"], "tags": ["cloud"], "hostnames": ["h"]}
+assert shodan("1.2.3.4") == {
+    "ports": [22, 443], "vulns": ["CVE-2021-1"], "tags": ["cloud"], "hostnames": ["h"]}
+ioc_enricher.http_get = lambda url, headers: None  # 404 = sin datos
+assert shodan("1.2.3.4") is None
+# csv_row cuenta puertos/CVEs de Shodan
+srow = csv_row({"ioc": "1.2.3.4", "type": "ip", "verdict": "LIMPIO",
+                "shodan": {"ports": [22, 443], "vulns": ["CVE-2021-1"]}})
+assert srow["shodan_ports"] == 2 and srow["shodan_vulns"] == 1
+assert csv_row({"ioc": "x", "type": "ip", "verdict": "LIMPIO"})["shodan_ports"] is None
 
 # OTX con una respuesta simulada: comprueba la URL y cómo se leen los pulses
 calls = []

@@ -143,6 +143,19 @@ def abuseipdb(ip, key):
     }
 
 
+def shodan(ip):
+    """Shodan InternetDB: gratis y sin API key. Puertos, CVEs y tags de una IP."""
+    d = http_get(f"https://internetdb.shodan.io/{ip}", {"Accept": "application/json"})
+    if d is None:
+        return None
+    return {
+        "ports": d.get("ports", []),
+        "vulns": d.get("vulns", []),
+        "tags": d.get("tags", []),
+        "hostnames": d.get("hostnames", []),
+    }
+
+
 def otx(ioc, kind, key):
     if kind == "ip":
         slug = "IPv6" if ":" in ioc else "IPv4"
@@ -181,8 +194,12 @@ def enrich(raw, vt_key, abuse_key, otx_key=None):
         return result
     try:
         result["virustotal"] = virustotal(ioc, kind, vt_key)
-        if kind == "ip" and abuse_key:
-            result["abuseipdb"] = abuseipdb(ioc, abuse_key)
+        if kind == "ip":
+            if abuse_key:
+                result["abuseipdb"] = abuseipdb(ioc, abuse_key)
+            sh = shodan(ioc)  # InternetDB no necesita clave
+            if sh:
+                result["shodan"] = sh
         if otx_key:
             result["otx"] = otx(ioc, kind, otx_key)
     except (urllib.error.URLError, KeyError) as e:
@@ -210,6 +227,15 @@ def print_result(r):
     if ab:
         print(f"  AbuseIPDB: score {ab['score']}%, {ab['reports']} reportes, "
               f"ISP {ab['isp']}, uso {ab['usage']}, Tor: {ab['tor']}")
+    sh = r.get("shodan")
+    if sh:
+        ports = ", ".join(map(str, sh["ports"])) or "ninguno"
+        line = f"  Shodan: puertos {ports}"
+        if sh["vulns"]:
+            line += f"; {len(sh['vulns'])} CVEs (p. ej. {', '.join(sh['vulns'][:3])})"
+        if sh["tags"]:
+            line += f"; tags: {', '.join(sh['tags'])}"
+        print(line)
     ox = r.get("otx")
     if ox:
         names = f" (p. ej. {'; '.join(ox['names'])})" if ox["names"] else ""
@@ -218,12 +244,13 @@ def print_result(r):
 
 CSV_COLUMNS = ["ioc", "type", "verdict", "vt_malicious", "vt_suspicious",
                "vt_engines", "vt_reputation", "abuse_score", "abuse_reports",
-               "otx_pulses", "link", "error"]
+               "shodan_ports", "shodan_vulns", "otx_pulses", "link", "error"]
 
 
 def csv_row(r):
     vt = r.get("virustotal") or {}
     ab = r.get("abuseipdb") or {}
+    sh = r.get("shodan") or {}
     ox = r.get("otx") or {}
     return {
         "ioc": r.get("ioc"),
@@ -235,6 +262,8 @@ def csv_row(r):
         "vt_reputation": vt.get("reputation"),
         "abuse_score": ab.get("score"),
         "abuse_reports": ab.get("reports"),
+        "shodan_ports": len(sh["ports"]) if sh else None,
+        "shodan_vulns": len(sh["vulns"]) if sh else None,
         "otx_pulses": ox.get("pulses"),
         "link": vt.get("link"),
         "error": r.get("error"),

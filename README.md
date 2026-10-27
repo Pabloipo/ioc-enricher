@@ -9,7 +9,7 @@ Funciona con Python 3.8 o superior y no necesita instalar ninguna librería.
 - Reconoce si el IOC es una IPv4/IPv6, un dominio, una URL o un hash (MD5, SHA1 o SHA256).
 - Acepta IOCs "defangeados" como vienen en los informes (`evil[.]com`, `hxxps://`, `1.2.3[.]4`).
 - Las IPs privadas las salta para no gastar consultas.
-- Consulta VirusTotal para todo y, si es una IP, también AbuseIPDB.
+- Consulta VirusTotal para todo y, si es una IP, también AbuseIPDB y Shodan (InternetDB: puertos abiertos, CVEs y tags).
 - Si tienes clave de OTX, dice en cuántos pulses aparece el IOC y el nombre de algunos.
 - Devuelve `MALICIOSO`, `SOSPECHOSO`, `LIMPIO` o `SIN DATOS`.
 - Con `--json` saca el resultado en JSON, o con `--csv` en CSV, para pasarlo a otra herramienta.
@@ -72,6 +72,8 @@ Ejemplo de salida (las cifras son inventadas):
 
 Los umbrales están en la función `verdict()` y se pueden cambiar. Ojo: que salga LIMPIO no quiere decir que sea seguro. Puede que el IOC sea nuevo y nadie lo haya analizado todavía.
 
+Shodan tampoco cuenta para el veredicto: los CVEs de InternetDB son servicios expuestos que *podrían* ser vulnerables (quizá ya parcheados), así que se muestran como contexto, no como señal de malicia.
+
 OTX no cuenta para el veredicto. Dominios inofensivos como `example.com` aparecen en decenas de pulses porque la gente los mete en sus listas, así que el número de pulses se muestra como contexto para que lo valores tú.
 
 ## Caché local
@@ -101,7 +103,9 @@ No usan la red ni necesitan API keys.
 
 - [x] Analizar URLs completas
 - [x] Añadir AlienVault OTX
-- [ ] Añadir URLhaus y Shodan
+- [x] Añadir Shodan (InternetDB, sin key)
+- [ ] Añadir URLhaus
+- [ ] Soportar la API completa de Shodan con key (SHODAN_API_KEY)
 - [x] Exportar a CSV
 - [x] Guardar una caché local para no repetir consultas
 
