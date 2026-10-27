@@ -2,7 +2,8 @@
 import time
 
 import ioc_enricher
-from ioc_enricher import csv_row, ioc_type, otx, refang, shodan, urlhaus, verdict, vt_url_id
+from ioc_enricher import (csv_row, ioc_type, otx, refang, shodan, shodan_api,
+                          urlhaus, verdict, vt_url_id)
 
 real_http_get = ioc_enricher.http_get  # otx() de abajo sustituye http_get; guardamos el real
 
@@ -46,6 +47,23 @@ assert shodan("1.2.3.4") == {
     "ports": [22, 443], "vulns": ["CVE-2021-1"], "tags": ["cloud"], "hostnames": ["h"]}
 ioc_enricher.http_get = lambda url, headers: None  # 404 = sin datos
 assert shodan("1.2.3.4") is None
+
+# Shodan API completa: extrae org/país/SO/servicios, deduplica productos y
+# acepta vulns como lista o como dict (según versión de la API)
+ioc_enricher.http_get = lambda url, headers: {
+    "ports": [80, 443], "vulns": {"CVE-2021-1": {}, "CVE-2021-2": {}},
+    "org": "Evil Hosting", "isp": "EvilISP", "asn": "AS123",
+    "country_name": "Nowhere", "os": "Linux", "hostnames": ["h"], "tags": ["c2"],
+    "data": [{"product": "nginx"}, {"product": "nginx"}, {"product": "OpenSSH"}, {}]}
+sa = shodan_api("1.2.3.4", "k")
+assert sa["org"] == "Evil Hosting" and sa["country"] == "Nowhere" and sa["os"] == "Linux"
+assert sa["products"] == ["OpenSSH", "nginx"]        # dedup + ordenado
+assert sorted(sa["vulns"]) == ["CVE-2021-1", "CVE-2021-2"]  # dict -> lista de claves
+ioc_enricher.http_get = lambda url, headers: None
+assert shodan_api("1.2.3.4", "k") is None
+# csv_row saca shodan_org de la API completa
+assert csv_row({"ioc": "x", "type": "ip", "verdict": "LIMPIO",
+                "shodan": sa})["shodan_org"] == "Evil Hosting"
 # csv_row cuenta puertos/CVEs de Shodan
 srow = csv_row({"ioc": "1.2.3.4", "type": "ip", "verdict": "LIMPIO",
                 "shodan": {"ports": [22, 443], "vulns": ["CVE-2021-1"]}})

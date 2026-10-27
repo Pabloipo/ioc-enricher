@@ -159,6 +159,28 @@ def shodan(ip):
     }
 
 
+def shodan_api(ip, key):
+    """Shodan host API (con key): añade org/ISP, ASN, país, SO y servicios a lo de InternetDB."""
+    q = urllib.parse.urlencode({"key": key})
+    d = http_get(f"https://api.shodan.io/shodan/host/{ip}?{q}", {})
+    if d is None:
+        return None
+    services = d.get("data") or []
+    vulns = d.get("vulns") or []
+    return {
+        "ports": d.get("ports", []),
+        "vulns": list(vulns.keys()) if isinstance(vulns, dict) else vulns,
+        "tags": d.get("tags", []),
+        "hostnames": d.get("hostnames", []),
+        "org": d.get("org"),
+        "isp": d.get("isp"),
+        "asn": d.get("asn"),
+        "country": d.get("country_name"),
+        "os": d.get("os"),
+        "products": sorted({s["product"] for s in services if s.get("product")}),
+    }
+
+
 def urlhaus(ioc, kind, key):
     """URLhaus (abuse.ch): ¿el IOC está en su feed de URLs de malware? Requiere Auth-Key."""
     if kind == "hash" and len(ioc) == 40:
@@ -214,7 +236,7 @@ def verdict(result):
     return "LIMPIO"
 
 
-def enrich(raw, vt_key, abuse_key, otx_key=None, urlhaus_key=None):
+def enrich(raw, vt_key, abuse_key, otx_key=None, urlhaus_key=None, shodan_key=None):
     ioc = refang(raw)
     kind = ioc_type(ioc)
     result = {"ioc": ioc, "type": kind}
@@ -226,7 +248,7 @@ def enrich(raw, vt_key, abuse_key, otx_key=None, urlhaus_key=None):
         if kind == "ip":
             if abuse_key:
                 result["abuseipdb"] = abuseipdb(ioc, abuse_key)
-            sh = shodan(ioc)  # InternetDB no necesita clave
+            sh = shodan_api(ioc, shodan_key) if shodan_key else shodan(ioc)
             if sh:
                 result["shodan"] = sh
         if urlhaus_key:
@@ -269,6 +291,11 @@ def print_result(r):
         if sh["tags"]:
             line += f"; tags: {', '.join(sh['tags'])}"
         print(line)
+        extra = {k: sh[k] for k in ("org", "isp", "asn", "country", "os") if sh.get(k)}
+        if sh.get("products"):
+            extra["servicios"] = ", ".join(sh["products"][:5])
+        if extra:
+            print("    " + ", ".join(f"{k}: {v}" for k, v in extra.items()))
     uh = r.get("urlhaus")
     if uh and uh.get("listed"):
         threat = f", amenaza: {uh['threat']}" if uh.get("threat") else ""
@@ -284,8 +311,8 @@ def print_result(r):
 
 CSV_COLUMNS = ["ioc", "type", "verdict", "vt_malicious", "vt_suspicious",
                "vt_engines", "vt_reputation", "abuse_score", "abuse_reports",
-               "shodan_ports", "shodan_vulns", "urlhaus_listed", "otx_pulses",
-               "link", "error"]
+               "shodan_ports", "shodan_vulns", "shodan_org", "urlhaus_listed",
+               "otx_pulses", "link", "error"]
 
 
 def csv_row(r):
@@ -306,6 +333,7 @@ def csv_row(r):
         "abuse_reports": ab.get("reports"),
         "shodan_ports": len(sh["ports"]) if sh else None,
         "shodan_vulns": len(sh["vulns"]) if sh else None,
+        "shodan_org": sh.get("org"),
         "urlhaus_listed": uh.get("listed"),
         "otx_pulses": ox.get("pulses"),
         "link": vt.get("link"),
@@ -366,13 +394,15 @@ def main():
     abuse_key = os.environ.get("ABUSEIPDB_API_KEY")
     otx_key = os.environ.get("OTX_API_KEY")
     urlhaus_key = os.environ.get("URLHAUS_API_KEY")
+    shodan_key = os.environ.get("SHODAN_API_KEY")
 
     if not args.no_cache:
         global _CACHE, _CACHE_TTL
         _CACHE_TTL = args.cache_ttl * 3600
         _CACHE = load_cache(args.cache_file)
 
-    results = [enrich(i, vt_key, abuse_key, otx_key, urlhaus_key) for i in dict.fromkeys(iocs)]
+    results = [enrich(i, vt_key, abuse_key, otx_key, urlhaus_key, shodan_key)
+               for i in dict.fromkeys(iocs)]
 
     if _CACHE is not None:
         save_cache(args.cache_file, _CACHE)

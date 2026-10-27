@@ -9,7 +9,7 @@ Funciona con Python 3.8 o superior y no necesita instalar ninguna librería.
 - Reconoce si el IOC es una IPv4/IPv6, un dominio, una URL o un hash (MD5, SHA1 o SHA256).
 - Acepta IOCs "defangeados" como vienen en los informes (`evil[.]com`, `hxxps://`, `1.2.3[.]4`).
 - Las IPs privadas las salta para no gastar consultas.
-- Consulta VirusTotal para todo y, si es una IP, también AbuseIPDB y Shodan (InternetDB: puertos abiertos, CVEs y tags).
+- Consulta VirusTotal para todo y, si es una IP, también AbuseIPDB y Shodan (puertos abiertos, CVEs y tags). Con `SHODAN_API_KEY` usa la API completa (org/ISP, ASN, país, SO y servicios detectados); sin clave cae a InternetDB, que es gratis.
 - Si tienes clave de OTX, dice en cuántos pulses aparece el IOC y el nombre de algunos.
 - Si tienes clave de URLhaus (abuse.ch), comprueba si el IOC está en su feed de URLs de malware.
 - Devuelve `MALICIOSO`, `SOSPECHOSO`, `LIMPIO` o `SIN DATOS`.
@@ -22,7 +22,7 @@ git clone https://github.com/Pabloipo/ioc-enricher.git
 cd ioc-enricher
 ```
 
-Hace falta una API key gratuita de VirusTotal. Las de AbuseIPDB, OTX y URLhaus son opcionales (Shodan InternetDB no necesita clave).
+Hace falta una API key gratuita de VirusTotal. Las de AbuseIPDB, OTX, URLhaus y Shodan son opcionales (sin clave de Shodan se usa InternetDB, que es gratis).
 
 | Servicio | Dónde sacar la clave |
 |---|---|
@@ -30,6 +30,7 @@ Hace falta una API key gratuita de VirusTotal. Las de AbuseIPDB, OTX y URLhaus s
 | AbuseIPDB | Crea una cuenta en abuseipdb.com, Account > API > Create Key |
 | AlienVault OTX | Crea una cuenta en otx.alienvault.com, tu usuario > Settings > OTX Key |
 | URLhaus | Crea una cuenta en auth.abuse.ch, perfil > Auth-Key |
+| Shodan | Crea una cuenta en shodan.io, Account > API Key (opcional: sin ella se usa InternetDB) |
 
 ```bash
 # Linux / macOS
@@ -37,6 +38,7 @@ export VT_API_KEY="tu_clave"
 export ABUSEIPDB_API_KEY="tu_clave"
 export OTX_API_KEY="tu_clave"
 export URLHAUS_API_KEY="tu_clave"
+export SHODAN_API_KEY="tu_clave"
 ```
 
 ```powershell
@@ -45,6 +47,7 @@ $env:VT_API_KEY = "tu_clave"
 $env:ABUSEIPDB_API_KEY = "tu_clave"
 $env:OTX_API_KEY = "tu_clave"
 $env:URLHAUS_API_KEY = "tu_clave"
+$env:SHODAN_API_KEY = "tu_clave"
 ```
 
 ## Uso
@@ -109,7 +112,7 @@ No usan la red ni necesitan API keys.
 - [x] Añadir AlienVault OTX
 - [x] Añadir Shodan (InternetDB, sin key)
 - [x] Añadir URLhaus
-- [ ] Soportar la API completa de Shodan con key (SHODAN_API_KEY)
+- [x] Soportar la API completa de Shodan con key (SHODAN_API_KEY)
 - [x] Exportar a CSV
 - [x] Guardar una caché local para no repetir consultas
 
