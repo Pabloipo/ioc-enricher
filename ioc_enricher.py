@@ -401,8 +401,12 @@ def main():
         _CACHE_TTL = args.cache_ttl * 3600
         _CACHE = load_cache(args.cache_file)
 
-    results = [enrich(i, vt_key, abuse_key, otx_key, urlhaus_key, shodan_key)
-               for i in dict.fromkeys(iocs)]
+    unique = list(dict.fromkeys(iocs))
+    results = []
+    for n, i in enumerate(unique, 1):
+        if len(unique) > 1:  # progreso a stderr: no ensucia el JSON/CSV de stdout
+            print(f"[{n}/{len(unique)}] {i}", file=sys.stderr)
+        results.append(enrich(i, vt_key, abuse_key, otx_key, urlhaus_key, shodan_key))
 
     if _CACHE is not None:
         save_cache(args.cache_file, _CACHE)
