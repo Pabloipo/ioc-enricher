@@ -1,5 +1,9 @@
 # ioc-enricher
 
+[![tests](https://github.com/Pabloipo/ioc-enricher/actions/workflows/tests.yml/badge.svg)](https://github.com/Pabloipo/ioc-enricher/actions/workflows/tests.yml)
+[![Python](https://img.shields.io/badge/python-3.8%2B-blue)](https://www.python.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+
 Script en Python que consulta IPs, dominios y hashes en [VirusTotal](https://www.virustotal.com), [AbuseIPDB](https://www.abuseipdb.com) y [AlienVault OTX](https://otx.alienvault.com) y da un veredicto rápido. Lo uso para el triage de alertas.
 
 Funciona con Python 3.8 o superior y no necesita instalar ninguna librería.
